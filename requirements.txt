@@ -9,3 +9,6 @@ tiktoken
 huggingface-hub
 pypdf
 llama-cpp-python
+flask
+flask_cors
+requests

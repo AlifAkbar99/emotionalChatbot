@@ -1,0 +1,5 @@
+# API key tidak boleh diunggah ke repositori publik
+.env
+
+# Virtual Environment
+venv/
