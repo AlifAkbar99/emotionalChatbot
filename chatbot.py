@@ -4,8 +4,14 @@ import torch
 import random
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+from dotenv import load_dotenv
 
-os.environ["MISTRAL_API_KEY"] = "Fyycu3ZXDtePSs8FarNurTX6X6bZrb5p"
+def configure():
+    load_dotenv()
+
+configure()
+
+mistral_api_key = os.getenv('MISTRAL_API_KEY')
 
 app = Flask(__name__)
 CORS(app)
@@ -20,10 +26,10 @@ try:
     from langchain_mistralai import ChatMistralAI
     from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
     USE_LANGCHAIN = True
-    print("✅ LangChain loaded successfully!")
+    print("LangChain loaded successfully!")
 except ImportError as e:
-    print(f"⚠️ LangChain not available: {e}")
-    print("📦 Using direct Mistral API...")
+    print(f"LangChain not available: {e}")
+    print("Using direct Mistral API...")
 
 try:
     from transformers import AutoTokenizer, AutoModelForSequenceClassification, AutoConfig
@@ -32,13 +38,13 @@ try:
     MODEL_PATH = "./Model_Emosi_IndoBERT"
     
     if os.path.exists(MODEL_PATH):
-        print("🔄 Loading IndoBERT model...")
+        print("Loading IndoBERT model...")
         
         config = AutoConfig.from_pretrained(MODEL_PATH)
         
         if hasattr(config, 'id2label') and config.id2label:
             INDOBERT_LABELS = {int(k): v.lower() for k, v in config.id2label.items()}
-            print(f"📋 Labels from config: {INDOBERT_LABELS}")
+            print(f"Labels from config: {INDOBERT_LABELS}")
         else:
             INDOBERT_LABELS = {
                 0: 'anger',
@@ -57,18 +63,18 @@ try:
         
         if torch.cuda.is_available():
             indobert_model = indobert_model.cuda()
-            print("🚀 IndoBERT running on GPU")
+            print("IndoBERT running on GPU")
         else:
-            print("💻 IndoBERT running on CPU")
+            print("IndoBERT running on CPU")
         
         USE_INDOBERT = True
-        print("✅ IndoBERT loaded successfully!")
+        print("IndoBERT loaded successfully!")
     else:
-        print(f"⚠️ IndoBERT model not found at {MODEL_PATH}")
-        print("📦 Using keyword-based emotion detection...")
+        print(f"IndoBERT model not found at {MODEL_PATH}")
+        print("Using keyword-based emotion detection...")
 except ImportError as e:
-    print(f"⚠️ Transformers not available: {e}")
-    print("📦 Using keyword-based emotion detection...")
+    print(f"Transformers not available: {e}")
+    print("Using keyword-based emotion detection...")
 
 import requests
 
@@ -222,23 +228,23 @@ def detect_emotion(text):
     if USE_INDOBERT:
         emotion_bert, confidence, all_probs = detect_emotion_indobert(text)
         
-        print(f"🤖 IndoBERT: {emotion_bert} (confidence: {confidence:.2f})")
-        print(f"📝 Keyword: {keyword_emotion}")
+        print(f"IndoBERT: {emotion_bert} (confidence: {confidence:.2f})")
+        print(f"Keyword: {keyword_emotion}")
         
         if keyword_emotion and keyword_emotion != emotion_bert:
             happiness_indicators = ['senang', 'seneng', 'happy', 'hepi', 'yeay', 'yey', 'yeyy', 'hore', 'asik', 'seru', 'mantap', 'keren', 'alhamdulillah', 'syukur', 'haha', 'wkwk', 'hehe']
             if any(ind in text_lower for ind in happiness_indicators):
-                print(f"✨ Override to happiness (strong indicator found)")
+                print(f"Override to happiness (strong indicator found)")
                 return 'happiness', 0.9, 'keyword_override'
         
         if emotion_bert and confidence >= 0.5:
             if emotion_bert == 'neutral' and keyword_emotion:
-                print(f"🔄 Neutral override with keyword: {keyword_emotion}")
+                print(f"Neutral override with keyword: {keyword_emotion}")
                 return keyword_emotion, confidence, 'hybrid'
             return emotion_bert, confidence, 'indobert'
         
         if keyword_emotion:
-            print(f"📝 Using keyword fallback: {keyword_emotion}")
+            print(f"Using keyword fallback: {keyword_emotion}")
             return keyword_emotion, 0.7, 'keyword'
         
         if emotion_bert:
@@ -518,9 +524,9 @@ def chat():
         msg_analysis = analyze_message(user_message)
         
         print(f"\n{'='*50}")
-        print(f"📩 Message: {user_message}")
-        print(f"👤 User: {user_name} | 🎭 Emotion: {emotion} ({confidence:.0%})")
-        print(f"📊 Length: {msg_analysis['length']} | Sharing: {msg_analysis['is_sharing']} | Tips: {msg_analysis['needs_detailed_answer']}")
+        print(f"Message: {user_message}")
+        print(f"User: {user_name} | 🎭 Emotion: {emotion} ({confidence:.0%})")
+        print(f"Length: {msg_analysis['length']} | Sharing: {msg_analysis['is_sharing']} | Tips: {msg_analysis['needs_detailed_answer']}")
         
         conv_manager.add_message(session_id, 'user', user_message)
         
@@ -554,6 +560,7 @@ def chat():
                 if USE_LANGCHAIN:
                     llm = ChatMistralAI(
                         model="mistral-small-latest",
+                        mistral_api_key=mistral_api_key,
                         temperature=0.85,
                         max_tokens=max_tokens
                     )
