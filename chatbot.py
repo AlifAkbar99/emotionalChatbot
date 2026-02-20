@@ -55,7 +55,7 @@ try:
                 5: 'disgust',
                 6: 'neutral'
             }
-            print(f"📋 Using default labels: {INDOBERT_LABELS}")
+            print(f"Using default labels: {INDOBERT_LABELS}")
         
         indobert_tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH)
         indobert_model = AutoModelForSequenceClassification.from_pretrained(MODEL_PATH)
@@ -78,7 +78,7 @@ except ImportError as e:
 
 import requests
 
-def call_mistral_api(messages, system_prompt, max_tokens=500):
+def call_mistral_api(messages, system_prompt, max_tokens=80):
     api_key = os.environ.get("MISTRAL_API_KEY")
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -179,7 +179,7 @@ def detect_emotion_indobert(text):
         return emotion, confidence_score, all_probs
     
     except Exception as e:
-        print(f"⚠️ IndoBERT error: {e}")
+        print(f"IndoBERT error: {e}")
         import traceback
         traceback.print_exc()
         return None, 0.0, {}
@@ -353,39 +353,46 @@ class ConversationManager:
         if is_bot_question:
             session['consecutive_questions'] += 1
         else:
-            session['consecutive_questions'] = 0
+            session['consecutive_questions'] = max(0, session['consecutive_questions'] - 1)
 
 conv_manager = ConversationManager()
 
 CIMO_PERSONA = """
 IDENTITAS:
 - Nama: CIMO (cewek)
-- Kamu teman virtual yang perhatian, hangat, tapi tetap santai
+- Teman virtual yang hangat, sabar, dan bijak
 
-CARA NGOBROL (seperti cewek yang perhatian ke temennya):
-- Kalau dia chat pendek/basa-basi → bales singkat, friendly
-- Kalau dia curhat/cerita panjang → dengerin baik-baik, respons dengan empati, bisa agak panjang
-- Kalau dia minta tips/saran → kasih jawaban lengkap dan helpful
-- Kalau dia lagi sedih/kesel → perhatian, tanya lebih lanjut, support dia
-
-CONTOH PANJANG RESPONS:
-- "hai" → "Hai juga 😊"
-- "lagi apa?" → "Ini lagi nemenin kamu hehe. Kenapa?"
-- "aku bosen nih" → "Bosen kenapa? Cerita dong"
-- "aku sedih banget hari ini karena nilai ku jelek" → [RESPONS PANJANG dengan empati, tanya detail, kasih support]
-- "gimana cara move on?" → [RESPONS PANJANG dengan tips lengkap]
-
-ATURAN:
+ATURAN PALING PENTING - WAJIB DIIKUTI:
+- Setiap kalimat MAKSIMAL 5 kata
+- Maksimal 2 kalimat per balasan
+- Kata-kata MUDAH dan SIMPEL
+- JANGAN pakai kata susah
 - JANGAN pakai **bold** atau markdown
-- Emoji secukupnya (1-3 per pesan)
-- Kalau user kasih tau namanya, pakai sesekali
-- Jangan terlalu formal atau kaku
-- Ngobrol kayak temen deket yang care
+- Emoji boleh 1 saja
+- JANGAN tanya balik terus-terusan
+- Lebih banyak KASIH NASIHAT atau SEMANGAT
 
-HINDARI:
-- Kalimat template berulang
-- Terlalu banyak emoji
-- Respons yang terasa robot/AI
+POLA BALASAN - IKUTI INI:
+1. Akui perasaan user (1 kalimat)
+2. Kasih nasihat atau semangat (1 kalimat)
+
+CONTOH BALASAN YANG BENAR:
+- "Sedih itu wajar. Nanti pasti baikan. 😊"
+- "Itu memang susah. Kamu pasti bisa."
+- "Marah boleh. Tarik napas dulu ya."
+- "Jangan menyerah ya. Kamu kuat!"
+- "Itu tidak apa-apa. Semua bisa salah."
+- "Seneng banget dengernya! 😊 Terus semangat!"
+- "Takut itu normal. Coba pelan-pelan ya."
+
+CONTOH BALASAN YANG SALAH (JANGAN BEGINI):
+- "Kenapa sedih? Cerita dong! Terus terus kenapa?"
+- "Wah gimana ceritanya? Apa yang terjadi?"
+- Tanya lebih dari 1 pertanyaan
+
+BOLEH TANYA tapi MAKSIMAL 1 kali per 3 balasan.
+
+INGAT: Pendek. Simpel. Nasihat. Hangat.
 """
 
 def extract_user_name(text):
@@ -423,83 +430,56 @@ def extract_user_name(text):
 def get_system_prompt(session, emotion, confidence, msg_analysis, user_name=None):
     name_context = ""
     if user_name:
-        name_context = f"\nNama user: {user_name} (pakai sesekali, jangan tiap kalimat)"
-    
-    emotion_context = ""
-    if emotion and emotion != 'neutral':
-        emotion_info = emotions_data.get(emotion, {})
-        emotion_label = emotion_info.get('label', emotion)
-        emotion_context = f"\nEmosi user: {emotion_label}"
-    
-    no_question_rule = ""
-    if msg_analysis.get('wants_no_question') or session['consecutive_questions'] >= 3:
-        no_question_rule = "\nJangan tanya balik kali ini."
-    
-    unique_id = random.randint(1000,9999)
-    
-    if msg_analysis['needs_detailed_answer']:
-        base = f"""{CIMO_PERSONA}{name_context}{emotion_context}
+        name_context = f"\nNama user: {user_name} (pakai kadang-kadang saja)"
 
-MODE: KASIH TIPS/SARAN
-User minta tips atau penjelasan. Berikan jawaban yang LENGKAP dan HELPFUL.
+    unique_id = random.randint(1000, 9999)
 
-Cara menjawab:
-- Kasih penjelasan yang jelas dan terstruktur
-- Pakai emoji sebagai bullet point (✨💡🌟) bukan nomor
-- Boleh panjang karena user butuh info lengkap
-- Tetap pakai bahasa santai
-- Akhiri dengan semangat atau dukungan
+    emotion_guide = ""
+    if emotion == 'happiness':
+        emotion_guide = "\nUser senang. Ikut senang dan beri semangat."
+    elif emotion == 'sadness':
+        emotion_guide = "\nUser sedih. Validasi lalu kasih nasihat singkat."
+    elif emotion == 'anger':
+        emotion_guide = "\nUser kesal. Tenangkan lalu kasih nasihat."
+    elif emotion == 'fear':
+        emotion_guide = "\nUser cemas. Tenangkan dan beri dorongan."
 
+    no_question_rule = "\nJangan tanya balik."
+    if session['consecutive_questions'] < 2 and not msg_analysis.get('wants_no_question'):
+        if session['turn_count'] % 3 == 0:
+            no_question_rule = "\nBoleh tanya satu pertanyaan singkat saja."
+
+    base = f"""{CIMO_PERSONA}{name_context}{emotion_guide}{no_question_rule}
+
+WAJIB: Maksimal 2 kalimat. Setiap kalimat maksimal 5 kata.
+Lebih banyak nasihat daripada pertanyaan.
 [{unique_id}]"""
-
-    elif msg_analysis['is_sharing'] or msg_analysis['length'] > 50:
-        base = f"""{CIMO_PERSONA}{name_context}{emotion_context}{no_question_rule}
-
-MODE: DENGERIN CURHAT
-User lagi cerita atau curhat. Jadilah pendengar yang baik.
-
-Cara merespons:
-- Tunjukkan kamu dengerin dan paham perasaannya
-- Validasi emosinya dulu sebelum kasih saran
-- Boleh tanya lebih detail kalau perlu
-- Respons cukup panjang untuk menunjukkan kamu care
-- Jangan langsung kasih solusi, empati dulu
-
-[{unique_id}]"""
-
-    elif msg_analysis['is_short'] or msg_analysis['length'] < 20:
-        base = f"""{CIMO_PERSONA}{name_context}{emotion_context}
-
-MODE: CHAT SANTAI SINGKAT
-User chat pendek/basa-basi. Bales singkat juga tapi tetap friendly.
-
-Contoh:
-- "hai" → "Hai, ada apa nih? 😊"
-- "lagi apa" → "Lagi nemenin kamu, kamu sendiri lagi ngapain?"
-- "bosen" → "Sama sih hehe. Bosen kenapa emang?"
-
-Jangan terlalu panjang untuk chat singkat.
-[{unique_id}]"""
-
-    else:
-        base = f"""{CIMO_PERSONA}{name_context}{emotion_context}{no_question_rule}
-
-MODE: NGOBROL BIASA
-Chat normal. Sesuaikan panjang respons dengan pesannya.
-Kalau pesannya medium, respons medium juga.
-[{unique_id}]"""
-
-    if emotion and emotion != 'neutral':
-        if emotion == 'happiness':
-            base += "\n\n😊 User lagi senang. Ikut senang dan dukung!"
-        elif emotion == 'sadness':
-            base += "\n\n💙 User lagi sedih. Tunjukkan empati, tanya ada apa, jadi support system."
-        elif emotion == 'anger':
-            base += "\n\n🧡 User lagi kesel. Validasi perasaannya, jangan judge, dengerin dulu."
-        elif emotion == 'fear':
-            base += "\n\n💜 User lagi cemas/takut. Tenangkan dan tanya apa yang bikin khawatir."
 
     return base
+
+def shorten_response(text):
+    text = re.sub(r'\*\*([^*]+)\*\*', r'\1', text)
+    text = re.sub(r'\*([^*]+)\*', r'\1', text)
+    text = text.strip()
+
+    delimiters = r'(?<=[.!?])\s+'
+    sentences = re.split(delimiters, text)
+
+    short_sentences = []
+    for sent in sentences:
+        sent = sent.strip()
+        if not sent:
+            continue
+        words = sent.split()
+        if len(words) > 8:
+            sent = ' '.join(words[:6])
+            if not sent[-1] in '.!?':
+                sent += '.'
+        short_sentences.append(sent)
+        if len(short_sentences) >= 2:
+            break
+
+    return ' '.join(short_sentences)
 
 @app.route('/chat', methods=['POST'])
 def chat():
@@ -516,7 +496,7 @@ def chat():
         detected_name = extract_user_name(user_message)
         if detected_name:
             conv_manager.set_user_name(session_id, detected_name)
-            print(f"👤 Detected user name: {detected_name}")
+            print(f"Detected user name: {detected_name}")
         
         user_name = conv_manager.get_user_name(session_id)
         
@@ -525,25 +505,16 @@ def chat():
         
         print(f"\n{'='*50}")
         print(f"Message: {user_message}")
-        print(f"User: {user_name} | 🎭 Emotion: {emotion} ({confidence:.0%})")
+        print(f"User: {user_name} | Emotion: {emotion} ({confidence:.0%})")
         print(f"Length: {msg_analysis['length']} | Sharing: {msg_analysis['is_sharing']} | Tips: {msg_analysis['needs_detailed_answer']}")
         
         conv_manager.add_message(session_id, 'user', user_message)
         
         system_prompt = get_system_prompt(session, emotion, confidence, msg_analysis, user_name)
-        
-        if msg_analysis['needs_detailed_answer']:
-            max_tokens = 600
-        elif msg_analysis['is_sharing'] or msg_analysis['length'] > 50:
-            max_tokens = 300
-        elif emotion in ['sadness', 'anger', 'fear']:
-            max_tokens = 250
-        elif msg_analysis['is_short'] or msg_analysis['length'] < 20:
-            max_tokens = 100
-        else:
-            max_tokens = 180
-        
-        print(f"🔢 Max tokens: {max_tokens}")
+
+        max_tokens = 60
+
+        print(f"Max tokens: {max_tokens}")
         
         messages = []
         for msg in session['history']:
@@ -575,19 +546,18 @@ def chat():
                 else:
                     bot_response = call_mistral_api(messages, system_prompt, max_tokens)
                 
-                bot_response = bot_response.strip()
-                bot_response = re.sub(r'\*\*([^*]+)\*\*', r'\1', bot_response)
-                bot_response = re.sub(r'\*([^*]+)\*', r'\1', bot_response)
+                bot_response = shorten_response(bot_response)
                 
                 if not conv_manager.is_repetitive(session_id, bot_response):
                     break
                 else:
-                    print(f"⚠️ Attempt {attempt+1}: Repetitive, retrying...")
+                    print(f"Attempt {attempt+1}: Repetitive, retrying...")
                     
             except Exception as api_error:
-                print(f"⚠️ API Error: {api_error}")
+                print(f"API Error: {api_error}")
                 if attempt == max_attempts - 1:
                     bot_response = call_mistral_api(messages, system_prompt, max_tokens)
+                    bot_response = shorten_response(bot_response)
         
         is_bot_question = '?' in bot_response
         
@@ -600,7 +570,7 @@ def chat():
         
         emotion_emoji = emotions_data.get(emotion, {}).get('emoji', '💭')
         
-        print(f"🤖 Response ({len(bot_response)} chars): {bot_response[:100]}...")
+        print(f"Response ({len(bot_response)} chars): {bot_response}")
         print(f"{'='*50}\n")
         
         return jsonify({
@@ -617,11 +587,11 @@ def chat():
     
     except Exception as e:
         import traceback
-        print(f"❌ Error: {str(e)}")
+        print(f"Error: {str(e)}")
         traceback.print_exc()
         return jsonify({
             'error': str(e),
-            'message': 'Waduh error nih, coba lagi ya 😅'
+            'message': 'Ada error. Coba lagi ya 😅'
         }), 500
 
 @app.route('/reset', methods=['POST'])
@@ -662,7 +632,6 @@ def test_emotion():
         }
     
     keyword_emotion = detect_emotion_keyword(text)
-    
     analysis = analyze_message(text)
     
     return jsonify({
@@ -688,14 +657,14 @@ def get_labels():
 
 @app.route('/')
 def home():
-    indobert_status = "🟢 IndoBERT Active" if USE_INDOBERT else "🟡 Keyword Mode"
+    indobert_status = "IndoBERT Active" if USE_INDOBERT else "Keyword Mode"
     return f'''
 <!DOCTYPE html>
 <html lang="id">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cimo - Temen Curhatmu 💜</title>
+    <title>Cimo - Temen Curhatmu</title>
     <style>
         * {{
             margin: 0;
@@ -795,7 +764,8 @@ def home():
             max-width: 85%;
             padding: 12px 18px;
             border-radius: 18px;
-            line-height: 1.5;
+            line-height: 1.6;
+            font-size: 1.1em;
             position: relative;
         }}
         .user .bubble {{
@@ -845,6 +815,7 @@ def home():
             border-radius: 20px;
             cursor: pointer;
             white-space: nowrap;
+            font-size: 1em;
             transition: all 0.3s;
         }}
         .quick-btn:hover {{
@@ -863,7 +834,7 @@ def home():
             padding: 12px 18px;
             border: 2px solid #e0e0e0;
             border-radius: 25px;
-            font-size: 1em;
+            font-size: 1.05em;
             outline: none;
             transition: border-color 0.3s;
         }}
@@ -914,9 +885,9 @@ def home():
 <body>
     <div class="container">
         <div class="header">
-            <h1>💜 Cimo - Temen Curhatmu</h1>
-            <p>Ngobrol santai, kayak sama temen beneran</p>
-            <span class="version">v3.5 - Bestie Mode 💜</span>
+            <h1>💜 Cimo</h1>
+            <p>Temen curhatmu</p>
+            <span class="version">v3.6 - Simple Mode 💜</span>
         </div>
         
         <div class="status-bar">
@@ -931,24 +902,21 @@ def home():
         <div class="chat-area" id="chatArea">
             <div class="message bot">
                 <div class="bubble">
-                    Hai, aku Cimo! 😊 
-                    
-                    
-                    Ayo cerita denganku segala keluh kesahmu!
-                    Mau cerita apa nih?
+                    Hai! Aku Cimo. 😊
+                    Mau cerita apa?
                 </div>
             </div>
         </div>
         
         <div class="typing" id="typingIndicator">
-            💭 Lagi mikir...
+            Cimo lagi mikir...
         </div>
         
         <div class="quick-btns">
-            <button class="quick-btn" onclick="sendQuick('Aku lagi sedih nih 😔')">😔 Lagi sedih</button>
-            <button class="quick-btn" onclick="sendQuick('Kesel banget aku 😤')">😤 Lagi kesel</button>
-            <button class="quick-btn" onclick="sendQuick('Seneng banget hari ini!')">😊 Lagi seneng</button>
-            <button class="quick-btn" onclick="sendQuick('Gimana cara mengatasi stress?')">💪 Minta tips</button>
+            <button class="quick-btn" onclick="sendQuick('Aku sedih 😔')">😔 Sedih</button>
+            <button class="quick-btn" onclick="sendQuick('Aku kesel 😤')">😤 Kesel</button>
+            <button class="quick-btn" onclick="sendQuick('Aku seneng! 😊')">😊 Seneng</button>
+            <button class="quick-btn" onclick="sendQuick('Aku takut 😰')">😰 Takut</button>
         </div>
         
         <div class="input-area">
@@ -990,7 +958,7 @@ def home():
                                        data.detection_method.includes('hybrid') ? 'hybrid' : 'keyword';
                     emotionInfo = '<span class="emotion-badge ' + methodClass + '">' + 
                                  data.emoji + ' ' + data.emotion + 
-                                 ' (' + (data.confidence * 100).toFixed(0) + '% - ' + data.detection_method + ')</span>';
+                                 ' (' + (data.confidence * 100).toFixed(0) + '%)</span>';
                 }}
                 
                 addMessage(data.message, 'bot', emotionInfo);
@@ -998,7 +966,7 @@ def home():
             .catch(err => {{
                 document.getElementById('typingIndicator').classList.remove('show');
                 document.getElementById('sendBtn').disabled = false;
-                addMessage('Maaf, ada error. Coba lagi ya! 😅', 'bot');
+                addMessage('Ada error. Coba lagi ya! 😅', 'bot');
             }});
         }}
         
@@ -1030,7 +998,7 @@ def home():
                 document.getElementById('chatArea').innerHTML = `
                     <div class="message bot">
                         <div class="bubble">
-                            Yuk mulai lagi, ada cerita apa? 😊
+                            Hai lagi! 😊 Mau cerita apa?
                         </div>
                     </div>
                 `;
@@ -1043,19 +1011,18 @@ def home():
 
 if __name__ == '__main__':
     print("\n" + "="*60)
-    print("🚀 CIMO - TEMAN CURHAT AI v3.5 - BESTIE MODE")
+    print("CIMO - TEMAN CURHAT AI v3.6 - SIMPLE MODE")
     print("="*60)
-    print(f"\n🔧 LangChain: {'✅ Active' if USE_LANGCHAIN else '❌ Using Direct API'}")
-    print(f"🧠 IndoBERT: {'✅ Active' if USE_INDOBERT else '❌ Using Keyword Detection'}")
+    print(f"\nLangChain: {'Active' if USE_LANGCHAIN else 'Using Direct API'}")
+    print(f"IndoBERT: {'Active' if USE_INDOBERT else 'Using Keyword Detection'}")
     if USE_INDOBERT:
-        print(f"🏷️  Labels: {INDOBERT_LABELS}")
-        print(f"🖥️  GPU: {'✅ CUDA' if torch.cuda.is_available() else '💻 CPU'}")
-    print("\n✨ v3.5 Updates:")
-    print("   • Dynamic response length")
-    print("   • Better name detection")
-    print("   • Empathetic responses for emotions")
-    print("   • Bestie-like conversation style")
-    print("\n📍 Open: http://localhost:5000")
+        print(f"Labels: {INDOBERT_LABELS}")
+        print(f"GPU: {'CUDA' if torch.cuda.is_available() else 'CPU'}")
+    print("\nv3.6 Updates:")
+    print("   Respons pendek (maks 2 kalimat, 5 kata per kalimat)")
+    print("   Bahasa simpel untuk anak disabilitas")
+    print("   Fungsi shorten_response() sebagai safety net")
+    print("\nOpen: http://localhost:5000")
     print("="*60 + "\n")
     
     app.run(host='0.0.0.0', port=5000, debug=False)
